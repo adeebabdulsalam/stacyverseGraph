@@ -8,16 +8,17 @@ import { fetchAccount, fetchBalance, fetchCollection, fetchToken, events, transa
 export function processItem(value: JSONValue, userData: Value): void {
   // See the JSONValue documentation for details on dealing
   // with JSON values
-  let obj = value.toObject()
-  let tokenName = obj.get('name')
+  let metadata = value.toString()
 
-  if (!tokenName) {
+  if (!metadata) {
     return
   }else{
     let tokenEntity = Token.load(userData.toString())
-    if(tokenEntity!=null && (!tokenName.toString().includes("XX") && !tokenName.toString().includes("Edition"))){
-      tokenEntity.isHalloweenTradeable = true
-      tokenEntity.save()
+    if(tokenEntity!=null){
+        if((!metadata.includes("XX") && !metadata.includes("Edition")))
+          tokenEntity.isHalloweenTradeable = true
+        tokenEntity.metadata = metadata
+        tokenEntity.save()
     }
   }
 
@@ -36,8 +37,9 @@ export function handleURI(event: URI): void {
   let tokenEntity:Token = fetchToken(collectionEntity, event.params._id)
   tokenEntity.uri = event.params._value
   tokenEntity.save()
+  collectionEntity.save()
   if(event.params._value){
-    let hash = event.params._value.replace("ipfs://ipfs/","")
+    let hash = event.params._value.replace("/ipfs/","")
     ipfs.mapJSON(hash, 'processItem', Value.fromString(tokenEntity.id))
   }
 }

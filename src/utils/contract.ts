@@ -61,6 +61,7 @@ export function fetchToken(collectionEntity: Collection, id: BigInt): Token{
         tokenEntity = new Token(tokenid)
         tokenEntity.collection  = collectionEntity.id
         tokenEntity.identifier = id
+        tokenEntity.isHalloweenTradeable = false
     }
     return tokenEntity as Token
 }
@@ -81,6 +82,7 @@ export function fetchAccount(address: Address): Account{
     let accountEntity = Account.load(address.toHexString())
     if(accountEntity == null){
         accountEntity = new Account(address.toHexString())
+        accountEntity.isHalloweenTraded = false
     }
     return accountEntity as Account
 }

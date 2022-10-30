@@ -236,6 +236,23 @@ export class Token extends Entity {
     }
   }
 
+  get metadata(): string | null {
+    let value = this.get("metadata");
+    if (!value || value.kind == ValueKind.NULL) {
+      return null;
+    } else {
+      return value.toString();
+    }
+  }
+
+  set metadata(value: string | null) {
+    if (!value) {
+      this.unset("metadata");
+    } else {
+      this.set("metadata", Value.fromString(<string>value));
+    }
+  }
+
   get isHalloweenTradeable(): boolean {
     let value = this.get("isHalloweenTradeable");
     return value!.toBoolean();

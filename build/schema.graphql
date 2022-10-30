@@ -6,7 +6,7 @@ type Account @entity {
   transfersFrom: [Transfer!]! @derivedFrom(field: "senderAddress")
   transfersTo: [Transfer!]! @derivedFrom(field: "receiverAddress")
   balances: [Balance!] @derivedFrom(field: "account")
-  isHalloweenTraded: Boolean
+  isHalloweenTraded: Boolean!
 }
 
 # All collection is a contract, All contract need not be a collection
@@ -25,7 +25,8 @@ type Token @entity{
   collection: Collection!
   identifier: BigInt!
   uri: String
-  isHalloweenTradeable: Boolean
+  metadata: String
+  isHalloweenTradeable: Boolean!
   transfers: [Transfer!]! @derivedFrom(field: "token")
   balances: [Balance!]! @derivedFrom(field: "token")
 }
