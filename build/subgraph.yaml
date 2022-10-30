@@ -1,6 +1,6 @@
 specVersion: 0.0.4
 schema:
-  file: ./schema.graphql
+  file: schema.graphql
 dataSources:
   - kind: ethereum
     name: Stacy
@@ -14,35 +14,20 @@ dataSources:
       apiVersion: 0.0.6
       language: wasm/assemblyscript
       entities:
-        # - ApprovalForAll
         - CreateERC1155_v1
-        # - OwnershipTransferred
-        # - SecondarySaleFees
-        # - SignerAdded
-        # - SignerRemoved
         - TransferBatch
         - TransferSingle
         - URI
       abis:
         - name: Stacy
-          file: ./abis/Stacy.json
+          file: Stacy/abis/Stacy.json
       eventHandlers:
-        # - event: ApprovalForAll(indexed address,indexed address,bool)
-        #   handler: handleApprovalForAll
         - event: CreateERC1155_v1(indexed address,string,string)
           handler: handleCreateERC1155_v1
-        # - event: OwnershipTransferred(indexed address,indexed address)
-        #   handler: handleOwnershipTransferred
-        # - event: SecondarySaleFees(uint256,address[],uint256[])
-        #   handler: handleSecondarySaleFees
-        # - event: SignerAdded(indexed address)
-        #   handler: handleSignerAdded
-        # - event: SignerRemoved(indexed address)
-        #   handler: handleSignerRemoved
         - event: TransferBatch(indexed address,indexed address,indexed address,uint256[],uint256[])
           handler: handleTransferBatch
         - event: TransferSingle(indexed address,indexed address,indexed address,uint256,uint256)
           handler: handleTransferSingle
         - event: URI(string,indexed uint256)
           handler: handleURI
-      file: ./src/stacy.ts
+      file: Stacy/Stacy.wasm

@@ -1,87 +1,154 @@
-import { BigInt } from "@graphprotocol/graph-ts"
-import {
-  Stacy,
-  ApprovalForAll,
-  CreateERC1155_v1,
-  OwnershipTransferred,
-  SecondarySaleFees,
-  SignerAdded,
-  SignerRemoved,
-  TransferBatch,
-  TransferSingle,
-  URI
-} from "../generated/Stacy/Stacy"
-import { ExampleEntity } from "../generated/schema"
+import { ipfs } from '@graphprotocol/graph-ts'
+import { JSONValue, Value } from '@graphprotocol/graph-ts'
+import { TransferBatch, TransferSingle, CreateERC1155_v1, URI } from "../generated/Stacy/Stacy"
+import { BigInt, ethereum, store } from '@graphprotocol/graph-ts'
+import { Account, Collection, Transaction, Transfer, Token } from "../generated/schema"
+import { fetchAccount, fetchBalance, fetchCollection, fetchToken, events, transactions, constants} from './utils/contract'
 
-export function handleApprovalForAll(event: ApprovalForAll): void {
-  // Entities can be loaded from the store using a string ID; this ID
-  // needs to be unique across all entities of the same type
-  let entity = ExampleEntity.load(event.transaction.from.toHex())
+export function processItem(value: JSONValue, userData: Value): void {
+  // See the JSONValue documentation for details on dealing
+  // with JSON values
+  let obj = value.toObject()
+  let tokenName = obj.get('name')
 
-  // Entities only exist after they have been saved to the store;
-  // `null` checks allow to create entities on demand
-  if (!entity) {
-    entity = new ExampleEntity(event.transaction.from.toHex())
-
-    // Entity fields can be set using simple assignments
-    entity.count = BigInt.fromI32(0)
+  if (!tokenName) {
+    return
+  }else{
+    let tokenEntity = Token.load(userData.toString())
+    if(tokenEntity!=null && (!tokenName.toString().includes("XX") && !tokenName.toString().includes("Edition"))){
+      tokenEntity.isHalloweenTradeable = true
+      tokenEntity.save()
+    }
   }
 
-  // BigInt and BigDecimal math are supported
-  entity.count = entity.count + BigInt.fromI32(1)
-
-  // Entity fields can be set based on event parameters
-  entity._owner = event.params._owner
-  entity._operator = event.params._operator
-
-  // Entities can be written to the store with `.save()`
-  entity.save()
-
-  // Note: If a handler doesn't require existing field values, it is faster
-  // _not_ to load the entity from the store. Instead, create it fresh with
-  // `new Entity(...)`, set the fields that should be updated and save the
-  // entity back to the store. Fields that were not set or unset remain
-  // unchanged, allowing for partial updates to be applied.
-
-  // It is also possible to access smart contracts from mappings. For
-  // example, the contract that has emitted the event can be connected to
-  // with:
-  //
-  // let contract = Contract.bind(event.address)
-  //
-  // The following functions can then be called on this contract to access
-  // state variables and other data:
-  //
-  // - contract.balanceOf(...)
-  // - contract.balanceOfBatch(...)
-  // - contract.contractURI(...)
-  // - contract.creators(...)
-  // - contract.fees(...)
-  // - contract.getFeeBps(...)
-  // - contract.getFeeRecipients(...)
-  // - contract.isApprovedForAll(...)
-  // - contract.isOwner(...)
-  // - contract.isSigner(...)
-  // - contract.name(...)
-  // - contract.owner(...)
-  // - contract.supportsInterface(...)
-  // - contract.symbol(...)
-  // - contract.tokenURIPrefix(...)
-  // - contract.uri(...)
 }
 
-export function handleCreateERC1155_v1(event: CreateERC1155_v1): void {}
+export function handleCreateERC1155_v1(event: CreateERC1155_v1): void {
+  let collectionEntity:Collection = fetchCollection(event.address)
+  collectionEntity.name = event.params.name
+  collectionEntity.symbol = event.params.symbol
+  collectionEntity.creator = event.params.creator.toHexString()
+  collectionEntity.save()
+}
 
-export function handleOwnershipTransferred(event: OwnershipTransferred): void {}
+export function handleURI(event: URI): void {
+  let collectionEntity: Collection = fetchCollection(event.address)
+  let tokenEntity:Token = fetchToken(collectionEntity, event.params._id)
+  tokenEntity.uri = event.params._value
+  tokenEntity.save()
+  if(event.params._value){
+    let hash = event.params._value.replace("ipfs://ipfs/","")
+    ipfs.mapJSON(hash, 'processItem', Value.fromString(tokenEntity.id))
+  }
+}
 
-export function handleSecondarySaleFees(event: SecondarySaleFees): void {}
+function registerTransfer(
+    event: ethereum.Event,
+    suffix: string,
+    collectionEntity: Collection,
+    operator: Account,
+    from: Account,
+    to: Account,
+    id: BigInt,
+    value: BigInt
+    ): void{
 
-export function handleSignerAdded(event: SignerAdded): void {}
+    let tokenEntity = fetchToken(collectionEntity, id)
+    let transferEntity = new Transfer(events.id(event).concat(suffix))
 
-export function handleSignerRemoved(event: SignerRemoved): void {}
+    transferEntity.transaction = transactions.log(event).id
+    transferEntity.collection = collectionEntity.id
+    transferEntity.token = tokenEntity.id
+    transferEntity.operator = operator.id
+    transferEntity.senderAddress = from.id
+    transferEntity.receiverAddress = to.id
+    transferEntity.value = value
+    
+    if(from.id != constants.ADDRESS_ZERO){
+        let balanceEntity1 = fetchBalance(tokenEntity, from)
+        balanceEntity1.value =  balanceEntity1.value==constants.BIGINT_ZERO ? constants.BIGINT_ZERO : balanceEntity1.value.minus(transferEntity.value)
+        balanceEntity1.save()
+        if(balanceEntity1.value == constants.BIGINT_ZERO){
+            // remove entity from store if balance reach zero
+            store.remove("Balance", balanceEntity1.id)
+        }
+    }
 
-export function handleTransferBatch(event: TransferBatch): void {}
+    if(to.id != constants.ADDRESS_ZERO){
+        let balanceEntity2 = fetchBalance(tokenEntity, to)
+        balanceEntity2.value = balanceEntity2.value.plus(transferEntity.value)
+        balanceEntity2.save()
+    }else{
+        // if burned after blockNumber: 15830458 : block just after announced in discord
+        if(event.block.number.ge(BigInt.fromI32(15830458)) && tokenEntity.isHalloweenTradeable){
+            from.isHalloweenTraded = true
+            from.save()
+        }
+        // isHalloweenTradeable
+    }
+    
+      // saving transfers to transaction manually instead of deriving
+      let txEntity = Transaction.load(event.transaction.hash.toHexString())
+      if(txEntity != null){
+        let transferArray = txEntity.transfers
+        transferArray.push(transferEntity.id)
+        txEntity.transfers = transferArray
+        txEntity.save()
+      }
 
-export function handleTransferSingle(event: TransferSingle): void {}
+      
+    transferEntity.save()
+    tokenEntity.save()
+    collectionEntity.save()
+}
 
-export function handleURI(event: URI): void {}
+export function handleTransferSingle(event: TransferSingle): void{
+    let collectionEntity = fetchCollection(event.address)
+    let operator = fetchAccount(event.params._operator)
+    let from = fetchAccount(event.params._from)
+    let to = fetchAccount(event.params._to)
+   
+    collectionEntity.save()
+    operator.save()
+    from.save()
+    to.save()
+    registerTransfer(
+       event,
+       "",
+       collectionEntity,
+       operator,
+       from,
+       to,
+       event.params._id,
+       event.params._value
+    )
+   
+   }
+
+
+   export function handleTransferBatch(event: TransferBatch): void{
+    let collectionEntity = fetchCollection(event.address)
+    let operator = fetchAccount(event.params._operator)
+    let from = fetchAccount(event.params._from)
+    let to = fetchAccount(event.params._to)
+
+    collectionEntity.save()
+    operator.save()
+    from.save()
+    to.save()
+
+    let ids = event.params._ids
+    let values = event.params._values
+    for(let i = 0; i< ids.length; i++){
+        registerTransfer(
+            event,
+            "-".concat(i.toString()),
+            collectionEntity,
+            operator,
+            from,
+            to,
+            ids[i],
+            values[i]
+        )
+    }
+}
